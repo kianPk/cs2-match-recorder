@@ -23,6 +23,12 @@ public sealed class MatchRecorderPlugin
 
     public bool IsActive { get; private set; }
 
+    /// <summary>True when the match has entered overtime (scoreboard past regulation).</summary>
+    public bool IsOvertime { get; private set; }
+
+    /// <summary>Current round number being played (0 before first round).</summary>
+    public int CurrentRoundNumber { get; private set; }
+
     public void OnServerType(string serverType)
     {
         if (_config.IdleOnPractice && serverType.Equals("Practice", StringComparison.OrdinalIgnoreCase))
@@ -38,6 +44,8 @@ public sealed class MatchRecorderPlugin
     {
         if (!IsActive) return;
         Flush();
+        IsOvertime = false;
+        CurrentRoundNumber = 0;
         _session = new MatchSession
         {
             Map = mapName,
@@ -48,9 +56,15 @@ public sealed class MatchRecorderPlugin
     public void OnRoundStart(int roundNumber)
     {
         if (!IsActive || _session is null) return;
+        CurrentRoundNumber = roundNumber;
+        IsOvertime = IsOvertimeRound(roundNumber);
         _roundStarted = _clock.UtcNow;
-        _round = new RoundState { N = roundNumber };
+        _round = new RoundState { N = roundNumber, Overtime = IsOvertime };
     }
+
+    /// <summary>Overtime helper: rounds beyond regulation (default MR12 → round &gt; 24).</summary>
+    public static bool IsOvertimeRound(int roundNumber, int regulationRounds = 24) =>
+        roundNumber > regulationRounds;
 
     public void OnKill(KillEvent kill)
     {
@@ -85,8 +99,27 @@ public sealed class MatchRecorderPlugin
         _round.Winner = winner;
         _round.Reason = reason;
         _round.Scoreboard = new ScoreboardSnap { CT = scoreCt, T = scoreT };
+        if (scoreCt >= 12 && scoreT >= 12) IsOvertime = true;
         _session.Rounds.Add(_round);
         _round = null;
+    }
+
+    /// <summary>JSON-serializable match summary (map, rounds, duration).</summary>
+    public MatchSummary? Summary()
+    {
+        if (_session is null) return null;
+        var ended = _clock.UtcNow;
+        return new MatchSummary
+        {
+            Map = _session.Map,
+            Rounds = _session.Rounds.Count,
+            CurrentRound = CurrentRoundNumber,
+            Overtime = IsOvertime,
+            StartedAt = _session.StartedAt,
+            DurationSeconds = Math.Round((ended - _session.StartedAt).TotalSeconds, 2),
+            ScoreCt = _session.Rounds.LastOrDefault()?.Scoreboard?.CT,
+            ScoreT = _session.Rounds.LastOrDefault()?.Scoreboard?.T
+        };
     }
 
     public string? Flush()
@@ -99,6 +132,8 @@ public sealed class MatchRecorderPlugin
         var json = JsonSerializer.Serialize(_session, JsonOpts);
         File.WriteAllText(path, json);
         _session = null;
+        CurrentRoundNumber = 0;
+        IsOvertime = false;
         return path;
     }
 
@@ -150,6 +185,7 @@ public sealed class MatchSession
 public sealed class RoundState
 {
     public int N { get; set; }
+    public bool Overtime { get; set; }
     public string? Winner { get; set; }
     public string? Reason { get; set; }
     public ScoreboardSnap? Scoreboard { get; set; }
@@ -172,4 +208,16 @@ public sealed class TimelineEvent
     public bool? Hs { get; set; }
     public bool? Wallbang { get; set; }
     public bool? Noscope { get; set; }
+}
+
+public sealed class MatchSummary
+{
+    public string Map { get; set; } = "";
+    public int Rounds { get; set; }
+    public int CurrentRound { get; set; }
+    public bool Overtime { get; set; }
+    public DateTime StartedAt { get; set; }
+    public double DurationSeconds { get; set; }
+    public int? ScoreCt { get; set; }
+    public int? ScoreT { get; set; }
 }

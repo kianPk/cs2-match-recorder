@@ -12,6 +12,12 @@ Built for YGuard / dedicated nodes where you want post-match review without stor
 - End-of-round scoreboard snapshot (K/D/A, damage, ADR)
 - Writes one file per map: `match_YYYYMMDD_HHMMSS_<map>.json`
 - Idle on Practice pods (`SERVER_TYPE`) — same pattern as YGuard plugins
+- Overtime detection (`IsOvertimeRound`) + current round tracking
+- `Summary()` → map / rounds / duration JSON
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) (current **1.1.0**).
 
 ## Example output
 
@@ -49,13 +55,14 @@ Config: `configs/plugins/MatchRecorder/MatchRecorder.json`
 }
 ```
 
-## Build
+## Build / test
 
 ```bash
-dotnet build -c Release
+dotnet build MatchRecorder.sln -c Release
+dotnet test MatchRecorder.sln -c Release
 ```
 
-Requires .NET 8 + CounterStrikeSharp.
+Requires .NET 8. Host plugins additionally need CounterStrikeSharp.
 
 ## License
 
